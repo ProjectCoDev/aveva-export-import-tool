@@ -2,7 +2,6 @@
 
 Un outil graphique moderne pour exporter et importer des objets graphiques au format XML depuis AVEVA System Platform (2023 R2).
 
-![Logo AVEVA](aveva.png)
 
 ---
 
