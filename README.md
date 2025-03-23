@@ -33,7 +33,7 @@ Un outil graphique moderne pour exporter et importer des objets graphiques au fo
 Clonez ou téléchargez ce dépôt GitHub :
 
 ```bash
-https://github.com/<votre-utilisateur>/aveva-export-import-tool.git
+https://github.com/jocelynbanctel/aveva-export-import-tool.git
 ```
 
 Puis installez les dépendances :
