@@ -64,7 +64,7 @@ python AvevaTool.py
 
 Distribué sous licence **MIT**. Voir [LICENSE](LICENSE) pour plus d'infos.
 
-> AVERTISSEMENT : Ce logiciel est fourni "en l'état", sans garantie. Non affilié officiellement à AVEVA.
+> AVERTISSEMENT : Ce logiciel est fourni "en l'état", sans garantie. Ni affilié, ni sponsorisé, ni approuvé par AVEVA Group plc ou Schneider Electric.
 
 ---
 
