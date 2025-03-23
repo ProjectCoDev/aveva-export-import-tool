@@ -10,6 +10,11 @@ from System import String, Boolean, Array
 from PIL import Image
 from customtkinter import CTkImage
 import tkinter as tk
+import tkinter.messagebox as messagebox
+import tkinter.filedialog as filedialog
+import platform
+import subprocess
+import shlex
 
 # === ToolTip personnalisé ===
 class ToolTip:
@@ -37,16 +42,51 @@ class ToolTip:
             self.tipwindow.destroy()
             self.tipwindow = None
 
-# === CHEMIN DES DLLs ===
+# === CHEMIN DES DLLs ET GESTION PERSISTANTE ===
 if hasattr(sys, '_MEIPASS'):
     base_path = sys._MEIPASS
 else:
     base_path = os.getcwd()
 
+def get_persistent_storage_path():
+    if platform.system() == "Windows":
+        return os.path.join(os.environ["LOCALAPPDATA"], "AvevaTool")
+    else:
+        return os.path.expanduser("~/.avevatool")
+
+persistent_path = get_persistent_storage_path()
+os.makedirs(persistent_path, exist_ok=True)
+
+memory_file = os.path.join(persistent_path, "dll_paths.txt")
+
+def load_custom_dll_paths():
+    if os.path.exists(memory_file):
+        with open(memory_file, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if os.path.isdir(line.strip())]
+    return []
+
+def save_custom_dll_paths(paths):
+    with open(memory_file, "w", encoding="utf-8") as f:
+        for path in paths:
+            f.write(path + "\n")
+
+def reset_custom_dll_paths():
+    if os.path.exists(memory_file):
+        os.remove(memory_file)
+    messagebox.showinfo("DLL Reset", "Les chemins DLL personnalisés ont été réinitialisés. L'application va redémarrer.")
+    app.destroy()
+    subprocess.Popen([sys.executable] + sys.argv, shell=True)
+    sys.exit()
+
 dll_path = os.path.join(base_path, "dll")
-os.environ["PATH"] += os.pathsep + dll_path
-if dll_path not in sys.path:
-    sys.path.append(dll_path)
+custom_dll_paths = load_custom_dll_paths()
+all_dll_paths = [dll_path] + custom_dll_paths
+
+for path in all_dll_paths:
+    os.environ["PATH"] += os.pathsep + path
+    if path not in sys.path:
+        sys.path.append(path)
+
 
 # === CONFIGURATION DE L'ICÔNE ===
 try:
@@ -54,37 +94,36 @@ try:
     if os.path.exists(icon_path):
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("aveva.export.tool")
+        icon_available = True
+    else:
+        icon_available = False
 except:
-    pass
+    icon_available = False
 
 # === INITIALISATION UI ===
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
+if icon_available:
+    try:
+        app.iconbitmap(icon_path)
+    except:
+        pass
+top_button_frame = ctk.CTkFrame(app, fg_color="transparent")
+top_button_frame.pack(fill="x", padx=10, pady=(10, 0))
+
 app.title("AVEVA Export & Import XML Tool")
-app.geometry("800x700")  # Moins haut
+app.geometry("700x450")  # Taille étendue pour une meilleure disposition  # Fenêtre plus compacte
 app.configure(fg_color="#f2f4f8")  # Fond moderne clair
-if os.path.exists(icon_path):
-    app.iconbitmap(icon_path)
 
-# === CENTRER FENÊTRE ===
+# === CENTRER LA FENÊTRE ===
 app.update_idletasks()
-width = 800
-height = 700
-x = (app.winfo_screenwidth() // 2) - (width // 2)
-y = (app.winfo_screenheight() // 2) - (height // 2)
-app.geometry(f"{width}x{height}+{x}+{y}")
-
-# === LOGO AVEVA ===
-try:
-    aveva_logo_path = os.path.join(base_path, "aveva.png")
-    aveva_logo = CTkImage(Image.open(aveva_logo_path).convert("RGBA"), size=(200, 50))
-    logo_label = ctk.CTkLabel(app, image=aveva_logo, text="")
-    logo_label.pack(pady=(5, 0))  # Moins d’espace
-except Exception as e:
-    print(f"Erreur chargement logo AVEVA : {e}")
-
+screen_width = app.winfo_screenwidth()
+screen_height = app.winfo_screenheight()
+x = (screen_width - 700) // 2
+y = (screen_height - 450) // 2
+app.geometry(f"700x450+{x}+{y}")
 
 
 
@@ -118,14 +157,10 @@ En utilisant ce logiciel, vous acceptez ces conditions.
     text.pack(expand=True, fill="both", padx=10, pady=10)
     ctk.CTkButton(top, text="Fermer", command=top.destroy).pack(pady=(0, 10))
 
-conditions_button = ctk.CTkButton(app, text="Conditions générales", command=show_conditions, width=160)
-conditions_button.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-5)
-
-
 
 # === VARIABLES ===
 selected_galaxy = ctk.StringVar(value="Chargement...")
-username = ctk.StringVar(value="admin")
+username = ctk.StringVar(value="")
 password = ctk.StringVar()
 object_name = ctk.StringVar()
 export_folder = ctk.StringVar()
@@ -140,16 +175,6 @@ accordion = ctk.CTkTabview(app, segmented_button_fg_color="#dee2e6", segmented_b
 accordion.pack(fill="both", expand=True, padx=20, pady=10)
 accordion.add("Export")
 accordion.add("Import")
-
-# === ICONES ===
-def load_icon(name):
-    path = os.path.join(base_path, name)
-    if os.path.exists(path):
-        return CTkImage(Image.open(path).convert("RGBA"), size=(28, 28))
-    return None
-
-export_icon = load_icon("export.png")
-import_icon = load_icon("import.png")
 
 # === EXPORT UI ===
 export_tab = accordion.tab("Export")
@@ -173,7 +198,7 @@ ctk.CTkEntry(export_tab, textvariable=export_folder, state="readonly").grid(row=
 select_folder_btn = ctk.CTkButton(export_tab, text="...", width=30, command=lambda: select_folder(), hover=True)
 select_folder_btn.grid(row=5, column=2)
 ToolTip(select_folder_btn, "Parcourir dossier")
-export_button = ctk.CTkButton(export_tab, image=export_icon, text="Exporter", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_export))
+export_button = ctk.CTkButton(export_tab, text="Exporter", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_export))
 export_button.grid(row=6, column=1, pady=10)
 ToolTip(export_button, "Exporter les objets ou graphiques")
 
@@ -186,7 +211,7 @@ ctk.CTkEntry(import_tab, textvariable=import_xml_path, state="readonly").grid(ro
 select_xml_btn = ctk.CTkButton(import_tab, text="...", width=30, command=lambda: select_xml_file(), hover=True)
 select_xml_btn.grid(row=1, column=2)
 ToolTip(select_xml_btn, "Parcourir fichier XML")
-import_button = ctk.CTkButton(import_tab, image=import_icon, text="Importer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_import_xml))
+import_button = ctk.CTkButton(import_tab, text="Importer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_import_xml))
 import_button.grid(row=2, column=1, pady=10)
 ToolTip(import_button, "Importer un graphique XML")
 
@@ -253,6 +278,29 @@ def write_log(entry):
         timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
         log_file.write(f"{timestamp} {entry}\n")
 
+def manage_dll_paths():
+    new_path = filedialog.askdirectory(title="Ajouter un dossier de DLL")
+    if new_path:
+        if new_path not in custom_dll_paths:
+            custom_dll_paths.append(new_path)
+            save_custom_dll_paths(custom_dll_paths)
+            messagebox.showinfo("Ajouté", "Chemin ajouté. L'application va se fermer, veuillez la relancer manuellement.")
+            app.quit()
+            sys.exit()
+        else:
+            messagebox.showinfo("Info", "Ce chemin est déjà présent.")
+      
+
+
+add_dll_button = ctk.CTkButton(top_button_frame, text="Ajouter DLL", width=100, command=manage_dll_paths)
+add_dll_button.pack(side="left", padx=(0, 10))
+
+reset_dll_button = ctk.CTkButton(top_button_frame, text="Reset DLL", width=100, command=reset_custom_dll_paths)
+reset_dll_button.pack(side="left", padx=(0, 10))
+
+conditions_button = ctk.CTkButton(top_button_frame, text="Conditions générales", width=160, command=show_conditions)
+conditions_button.pack(side="right")
+
 # === INITIALISATION BACKEND EN THREAD ===
 def initialize_backend():
     try:
@@ -273,8 +321,11 @@ def initialize_backend():
         update_status("Prêt")
     except Exception as e:
         update_status("Erreur de chargement.")
-        messagebox.showerror("Erreur DLL", f"Erreur lors du chargement : {e}")
-        sys.exit(1)
+        retry = messagebox.askyesno("Erreur DLL", f"Erreur lors du chargement :\n{e}\n\nVoulez-vous ajouter un dossier contenant les DLL ?")
+        if retry:
+            manage_dll_paths()
+        else:
+            sys.exit(1)
 
 # === EXPORT ===
 def export_single(galaxy, obj_name, export_type_str, folder):
