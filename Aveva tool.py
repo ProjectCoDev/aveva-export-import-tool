@@ -42,13 +42,14 @@ class ToolTip:
             self.tipwindow.destroy()
             self.tipwindow = None
 
-# === CHEMIN DES DLLs ET GESTION PERSISTANTE ===
+# === DÉTERMINER BASE PATH ===
 if hasattr(sys, '_MEIPASS'):
     base_path = sys._MEIPASS
 else:
     base_path = os.getcwd()
 
-def get_persistent_storage_path():
+# === GESTION DU DOSSIER PERSISTANT ===
+def get_persistent_storage_path():      
     if platform.system() == "Windows":
         return os.path.join(os.environ["LOCALAPPDATA"], "AvevaTool")
     else:
@@ -78,14 +79,31 @@ def reset_custom_dll_paths():
     subprocess.Popen([sys.executable] + sys.argv, shell=True)
     sys.exit()
 
-dll_path = os.path.join(base_path, "dll")
-custom_dll_paths = load_custom_dll_paths()
-all_dll_paths = [dll_path] + custom_dll_paths
+# === CHARGEMENT DES DLLs ===
 
-for path in all_dll_paths:
-    os.environ["PATH"] += os.pathsep + path
-    if path not in sys.path:
-        sys.path.append(path)
+custom_dll_paths = load_custom_dll_paths()
+
+if not custom_dll_paths:
+    print("Aucun dossier DLL personnalisé enregistré. Aucun chargement effectué.")
+else:
+    dll_loaded = False
+    for path in custom_dll_paths:
+        try:
+            dll_file = os.path.join(path, "ArchestrA.Visualization.GraphicAccess.dll")
+            if os.path.isfile(dll_file):
+                clr.AddReference(dll_file)
+                # Ajouter le chemin pour les importations suivantes
+                if path not in sys.path:
+                    sys.path.append(path)
+                dll_loaded = True
+                print(f"DLL chargée depuis : {dll_file}")
+                break
+        except Exception as e:
+            print(f"Échec chargement DLL depuis {path} : {e}")
+
+    if not dll_loaded:
+        messagebox.showerror("Erreur DLL", "Impossible de charger 'ArchestrA.Visualization.GraphicAccess.dll' depuis les dossiers enregistrés.")
+        sys.exit(1)
 
 
 # === CONFIGURATION DE L'ICÔNE ===
@@ -301,16 +319,37 @@ reset_dll_button.pack(side="left", padx=(0, 10))
 conditions_button = ctk.CTkButton(top_button_frame, text="Conditions générales", width=160, command=show_conditions)
 conditions_button.pack(side="right")
 
-# === INITIALISATION BACKEND EN THREAD ===
 def initialize_backend():
     try:
         update_status("Chargement des DLLs...")
-        clr.AddReference(os.path.join(dll_path, "ArchestrA.Visualization.GraphicAccess.dll"))
+
+        # Charger les chemins personnalisés
+        custom_dll_paths = load_custom_dll_paths()
+        dll_loaded = False
+        last_exception = None
+
+        for path in custom_dll_paths:
+            try:
+                dll_file = os.path.join(path, "ArchestrA.Visualization.GraphicAccess.dll")
+                if os.path.isfile(dll_file):
+                    clr.AddReference(dll_file)
+                    if path not in sys.path:
+                        sys.path.append(path)
+                    dll_loaded = True
+                    break
+            except Exception as e:
+                last_exception = e
+
+        if not dll_loaded:
+            raise Exception(f"Aucune DLL valide trouvée. Dernière erreur : {last_exception}")
+
+        # Imports après chargement réussi
         global GRAccessApp, EgObjectIsTemplateOrInstance, EExportType, GraphicAccess
         from ArchestrA.GRAccess import GRAccessApp, EgObjectIsTemplateOrInstance, EExportType
         from ArchestrA.Visualization.GraphicAccess import GraphicAccess
 
         update_status("Connexion au serveur GRAccess...")
+
         global gr_access, galaxies, galaxy_list
         gr_access = GRAccessApp()
         galaxies = gr_access.QueryGalaxiesEx(String("localhost"))
@@ -319,13 +358,18 @@ def initialize_backend():
         selected_galaxy.set(galaxy_list[0] if galaxy_list else "")
         galaxy_combo.configure(values=galaxy_list)
         update_status("Prêt")
+
     except Exception as e:
         update_status("Erreur de chargement.")
-        retry = messagebox.askyesno("Erreur DLL", f"Erreur lors du chargement :\n{e}\n\nVoulez-vous ajouter un dossier contenant les DLL ?")
+        retry = messagebox.askyesno(
+            "Erreur DLL",
+            f"Erreur lors du chargement :\n{e}\n\nVoulez-vous ajouter un dossier contenant les DLL ?"
+        )
         if retry:
-            manage_dll_paths()
+            manage_dll_paths()  # Cette fonction doit ouvrir un file dialog + enregistrer le dossier
         else:
             sys.exit(1)
+
 
 # === EXPORT ===
 def export_single(galaxy, obj_name, export_type_str, folder):
@@ -363,7 +407,7 @@ def run_export():
     input_value = object_name.get().strip()
     folder = export_folder.get()
     export_type_str = export_type.get()
-    batch_mode = use_txt_file.get()
+    batch_mode = select_txt_file
 
     if not input_value or not folder:
         messagebox.showerror("Erreur", "Veuillez saisir un objet ou fichier .txt et un dossier d'export.")
