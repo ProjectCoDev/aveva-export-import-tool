@@ -64,10 +64,29 @@ os.makedirs(persistent_path, exist_ok=True)
 memory_file = os.path.join(persistent_path, "dll_paths.txt")
 
 def load_custom_dll_paths():
+    paths = []
+
+    # Chemins définis par l'utilisateur
     if os.path.exists(memory_file):
         with open(memory_file, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if os.path.isdir(line.strip())]
-    return []
+            paths += [line.strip() for line in f if os.path.isdir(line.strip())]
+
+    # Recherche automatique dans les répertoires standards AVEVA
+    default_dirs = [
+        r"C:\Program Files (x86)\Common Files\ArchestrA",
+        r"C:\Program Files (x86)\ArchestrA\Framework\Bin",
+    ]
+
+    for root_dir in default_dirs:
+        for root, dirs, files in os.walk(root_dir):
+            if "ArchestrA.Visualization.GraphicAccess.dll" in files:
+                # Évite doublon
+                if root not in paths:
+                    paths.append(root)
+                break  # On garde le premier trouvé
+
+    return paths
+
 
 def save_custom_dll_paths(paths):
     with open(memory_file, "w", encoding="utf-8") as f:
