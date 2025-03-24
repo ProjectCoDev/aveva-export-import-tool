@@ -24,6 +24,11 @@ Un outil graphique moderne pour exporter et importer des objets graphiques au fo
   - `customtkinter`
   - `Pillow`
   - `pythonnet`
+  - 
+⚠️ Les bibliothèques nécessaires (DLLs AVEVA) ne sont pas incluses avec cet outil.
+Veuillez les charger manuellement depuis une installation existante d’AVEVA System Platform.
+
+Ce comportement respecte les conditions d’utilisation des logiciels AVEVA.
 
 ---
 
