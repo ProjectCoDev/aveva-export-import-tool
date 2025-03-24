@@ -48,6 +48,9 @@ if hasattr(sys, '_MEIPASS'):
 else:
     base_path = os.getcwd()
 
+if base_path not in sys.path:
+    sys.path.append(base_path)
+
 # === GESTION DU DOSSIER PERSISTANT ===
 def get_persistent_storage_path():      
     if platform.system() == "Windows":
