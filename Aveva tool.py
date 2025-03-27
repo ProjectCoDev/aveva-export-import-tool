@@ -213,14 +213,13 @@ galaxy_list = []
 # === STYLED FRAME ACCORDION ===
 accordion = ctk.CTkTabview(app, segmented_button_fg_color="#dee2e6", segmented_button_selected_color="#0d6efd", segmented_button_selected_hover_color="#0b5ed7", segmented_button_unselected_color="#ffffff")
 accordion.pack(fill="both", expand=True, padx=20, pady=10)
+accordion.add("Galaxy")
 accordion.add("Export")
 accordion.add("Import")
+accordion.add("Suppression")
 
-# === EXPORT UI ===
-export_tab = accordion.tab("Export")
-ctk.CTkLabel(export_tab, text="Type d'export :").grid(row=0, column=0, sticky="w")
-export_menu = ctk.CTkOptionMenu(export_tab, variable=export_type, values=["Graphic", "Instance", "Template"])
-export_menu.grid(row=0, column=1)
+# === GALAXY UI ===
+export_tab = accordion.tab("Galaxy")
 ctk.CTkLabel(export_tab, text="Galaxy :").grid(row=1, column=0, sticky="w")
 galaxy_combo = ctk.CTkComboBox(export_tab, variable=selected_galaxy, values=["Chargement..."])
 galaxy_combo.grid(row=1, column=1)
@@ -228,6 +227,12 @@ ctk.CTkLabel(export_tab, text="Utilisateur :").grid(row=2, column=0, sticky="w")
 ctk.CTkEntry(export_tab, textvariable=username).grid(row=2, column=1)
 ctk.CTkLabel(export_tab, text="Mot de passe :").grid(row=3, column=0, sticky="w")
 ctk.CTkEntry(export_tab, textvariable=password, show="*").grid(row=3, column=1)
+
+# === EXPORT UI ===
+export_tab = accordion.tab("Export")
+ctk.CTkLabel(export_tab, text="Type d'export :").grid(row=0, column=0, sticky="w")
+export_menu = ctk.CTkOptionMenu(export_tab, variable=export_type, values=["Graphic", "Instance", "Template"])
+export_menu.grid(row=0, column=1)
 ctk.CTkLabel(export_tab, text="Nom de l'objet ou fichier .txt :").grid(row=4, column=0, sticky="w")
 ctk.CTkEntry(export_tab, textvariable=object_name).grid(row=4, column=1)
 select_file_btn = ctk.CTkButton(export_tab, text="...", width=30, command=lambda: select_txt_file(), hover=True)
@@ -244,8 +249,6 @@ ToolTip(export_button, "Exporter les objets ou graphiques")
 
 # === IMPORT UI ===
 import_tab = accordion.tab("Import")
-ctk.CTkLabel(import_tab, text="Nom du graphique :").grid(row=0, column=0, sticky="w")
-ctk.CTkEntry(import_tab, textvariable=import_graphic_name).grid(row=0, column=1)
 ctk.CTkLabel(import_tab, text="Fichier XML :").grid(row=1, column=0, sticky="w")
 ctk.CTkEntry(import_tab, textvariable=import_xml_path, state="readonly").grid(row=1, column=1)
 select_xml_btn = ctk.CTkButton(import_tab, text="...", width=30, command=lambda: select_xml_file(), hover=True)
@@ -254,6 +257,25 @@ ToolTip(select_xml_btn, "Parcourir fichier XML")
 import_button = ctk.CTkButton(import_tab, text="Importer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_import_xml))
 import_button.grid(row=2, column=1, pady=10)
 ToolTip(import_button, "Importer un graphique XML")
+
+# === SUPPRESSION UI ===
+delete_tab = accordion.tab("Suppression")
+
+delete_type = tk.StringVar(value="Instance")
+delete_object_name = tk.StringVar()
+
+ctk.CTkLabel(delete_tab, text="Type d'objet :").grid(row=0, column=0, sticky="w")
+ctk.CTkOptionMenu(delete_tab, variable=delete_type, values=["Instance", "Template"]).grid(row=0, column=1, sticky="ew")
+
+ctk.CTkLabel(delete_tab, text="Nom de l'objet ou fichier .txt :").grid(row=1, column=0, sticky="w")
+ctk.CTkEntry(delete_tab, textvariable=delete_object_name).grid(row=1, column=1)
+select_txt_btn = ctk.CTkButton(delete_tab, text="...", width=30, command=lambda: select_txt_file_delete(), hover=True)
+select_txt_btn.grid(row=1, column=2)
+ToolTip(select_txt_btn, "Parcourir fichier .txt")
+
+delete_button = ctk.CTkButton(delete_tab, text="Supprimer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_delete))
+delete_button.grid(row=2, column=1, pady=10)
+ToolTip(delete_button, "Supprimer un ou plusieurs objets")
 
 # === STATUS & FOOTER ===
 def update_status(msg):
@@ -429,7 +451,7 @@ def run_export():
     input_value = object_name.get().strip()
     folder = export_folder.get()
     export_type_str = export_type.get()
-    batch_mode = select_txt_file
+    batch_mode = os.path.isfile(input_value) and input_value.lower().endswith(".txt")
 
     if not input_value or not folder:
         messagebox.showerror("Erreur", "Veuillez saisir un objet ou fichier .txt et un dossier d'export.")
@@ -440,6 +462,7 @@ def run_export():
         if not galaxy.CommandResult.Successful:
             messagebox.showerror("Connexion échouée", galaxy.CommandResult.Text)
             return
+
         if batch_mode:
             if not os.path.exists(input_value):
                 messagebox.showerror("Erreur", "Fichier .txt introuvable.")
@@ -461,18 +484,19 @@ def run_export():
         write_log(f"❌ Exception globale : {e}")
         messagebox.showerror("Erreur", str(e))
 
-# === IMPORT XML ===
 def run_import_xml():
     update_status("Connexion à la Galaxy pour import...")
     galaxy_name = selected_galaxy.get()
     user = username.get()
     pwd = password.get()
-    graphic_name = import_graphic_name.get().strip()
     xml_path = import_xml_path.get().strip()
 
-    if not graphic_name or not xml_path:
-        messagebox.showerror("Erreur", "Veuillez saisir un nom de graphique et sélectionner un fichier XML.")
+    if not xml_path:
+        messagebox.showerror("Erreur", "Veuillez sélectionner un fichier XML.")
         return
+
+    graphic_name = os.path.splitext(os.path.basename(xml_path))[0]
+
     try:
         galaxy = galaxies[String(galaxy_name)]
         galaxy.Login(String(user), String(pwd))
@@ -490,6 +514,67 @@ def run_import_xml():
             messagebox.showerror("Erreur", f"Échec de l'import : {result.Text}")
     except Exception as e:
         write_log(f"❌ Exception import XML : {e}")
+        messagebox.showerror("Exception", str(e))
+
+def select_txt_file_delete():
+    result = os.popen(
+        'powershell -Command "[System.Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; '
+        '$ofd = New-Object System.Windows.Forms.OpenFileDialog; '
+        '$ofd.Filter = \'Text Files (*.txt)|*.txt\'; '
+        '$ofd.Title = \'Choisir un fichier .txt\'; '
+        'if ($ofd.ShowDialog() -eq \'OK\') { $ofd.FileName }"'
+    ).read().strip()
+
+    if result and result.lower().endswith(".txt"):
+        delete_object_name.set(result)
+
+
+def run_delete():
+    update_status("Connexion à la Galaxy pour suppression...")
+    galaxy_name = selected_galaxy.get()
+    user = username.get()
+    pwd = password.get()
+    input_value = delete_object_name.get().strip()
+    delete_type_str = delete_type.get()
+    batch_mode = os.path.isfile(input_value) and input_value.lower().endswith(".txt")
+
+    if not input_value:
+        messagebox.showerror("Erreur", "Veuillez saisir un objet ou fichier .txt.")
+        return
+    try:
+        galaxy = galaxies[String(galaxy_name)]
+        galaxy.Login(String(user), String(pwd))
+        if not galaxy.CommandResult.Successful:
+            messagebox.showerror("Connexion échouée", galaxy.CommandResult.Text)
+            return
+
+        obj_type = EgObjectIsTemplateOrInstance.gObjectIsInstance if delete_type_str == "Instance" else EgObjectIsTemplateOrInstance.gObjectIsTemplate
+
+        if batch_mode:
+            with open(input_value, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            total = len(lines)
+            success_count = 0
+            for obj_name in lines:
+                objects, result = galaxy.QueryObjectsByName(obj_type, Array[String]([String(obj_name)]))
+                if objects.count > 0:
+                    objects.DeleteAllObjects()
+                    success_count += 1
+                    write_log(f"✅ Objet supprimé : {obj_name}")
+                else:
+                    write_log(f"❌ Objet introuvable : {obj_name}")
+            messagebox.showinfo("Terminé", f"Suppression batch terminée : {success_count}/{total} objets supprimés.\nVoir le log.")
+        else:
+            objects, result = galaxy.QueryObjectsByName(obj_type, Array[String]([String(input_value)]))
+            if objects.count > 0:
+                objects.DeleteAllObjects()
+                write_log(f"✅ Objet supprimé : {input_value}")
+                messagebox.showinfo("Succès", f"Objet supprimé : {input_value}")
+            else:
+                write_log(f"❌ Objet introuvable : {input_value}")
+                messagebox.showerror("Erreur", f"Objet introuvable : {input_value}")
+    except Exception as e:
+        write_log(f"❌ Exception suppression : {e}")
         messagebox.showerror("Exception", str(e))
 
 # === DÉMARRAGE ===
