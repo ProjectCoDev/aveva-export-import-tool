@@ -471,8 +471,8 @@ def run_export():
             with open(input_value, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f if line.strip()]
             
-            update_status(f"Export de {len(lines)} objets en parallèle (max 5)...")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            update_status(f"Export de {len(lines)} objets en parallèle (max 2)...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [executor.submit(export_single, galaxy, obj_name, export_type_str, folder) for obj_name in lines]
                 total = len(futures)
                 success_count = 0
