@@ -15,6 +15,7 @@ import tkinter.filedialog as filedialog
 import platform
 import subprocess
 import shlex
+import concurrent.futures
 
 # === ToolTip personnalisé ===
 class ToolTip:
@@ -469,11 +470,16 @@ def run_export():
                 return
             with open(input_value, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f if line.strip()]
-            total = len(lines)
-            success_count = 0
-            for obj_name in lines:
-                if export_single(galaxy, obj_name, export_type_str, folder):
-                    success_count += 1
+            
+            update_status(f"Export de {len(lines)} objets en parallèle (max 5)...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(export_single, galaxy, obj_name, export_type_str, folder) for obj_name in lines]
+                total = len(futures)
+                success_count = 0
+                for future in concurrent.futures.as_completed(futures):
+                    if future.result():
+                        success_count += 1
+
             messagebox.showinfo("Terminé", f"Export batch terminé : {success_count}/{total} objets exportés.\nVoir le log.")
         else:
             if export_single(galaxy, input_value, export_type_str, folder):
