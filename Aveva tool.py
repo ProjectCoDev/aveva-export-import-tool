@@ -102,6 +102,16 @@ def reset_custom_dll_paths():
     subprocess.Popen([sys.executable] + sys.argv, shell=True)
     sys.exit()
 
+def update_export_mode():
+    if export_type.get() == "Graphic":
+        # Si Graphic => forcer 'Un fichier par objet' et désactiver
+        export_mode.set("Un fichier par objet")
+        export_mode_menu.configure(state="disabled")
+    else:
+        # Sinon, permettre de choisir
+        export_mode_menu.configure(state="normal")
+
+
 # === CHARGEMENT DES DLLs ===
 
 custom_dll_paths = load_custom_dll_paths()
@@ -231,52 +241,42 @@ ctk.CTkEntry(export_tab, textvariable=password, show="*").grid(row=3, column=1)
 
 # === EXPORT UI ===
 export_tab = accordion.tab("Export")
+
+# Type d'export
 ctk.CTkLabel(export_tab, text="Type d'export :").grid(row=0, column=0, sticky="w")
+export_type = ctk.StringVar(value="Graphic")  # Déclare la variable pour le type d'export
 export_menu = ctk.CTkOptionMenu(export_tab, variable=export_type, values=["Graphic", "Instance", "Template"])
 export_menu.grid(row=0, column=1)
+
+# Mode d'export
+ctk.CTkLabel(export_tab, text="Mode d'export :").grid(row=1, column=0, sticky="w")
+export_mode = ctk.StringVar(value="Un fichier par objet")  # Déclare la variable pour le mode d'export
+export_mode_menu = ctk.CTkOptionMenu(export_tab, variable=export_mode, values=["Un fichier par objet", "Un seul fichier"])
+export_mode_menu.grid(row=1, column=1)
+
+# Nom de l'objet ou fichier .txt
 ctk.CTkLabel(export_tab, text="Nom de l'objet ou fichier .txt :").grid(row=4, column=0, sticky="w")
 ctk.CTkEntry(export_tab, textvariable=object_name).grid(row=4, column=1)
+
+# Sélecteur de fichier .txt
 select_file_btn = ctk.CTkButton(export_tab, text="...", width=30, command=lambda: select_txt_file(), hover=True)
 select_file_btn.grid(row=4, column=2)
 ToolTip(select_file_btn, "Parcourir fichier .txt")
+
+# Dossier d'export
 ctk.CTkLabel(export_tab, text="Dossier d'export :").grid(row=5, column=0, sticky="w")
 ctk.CTkEntry(export_tab, textvariable=export_folder, state="readonly").grid(row=5, column=1)
+
+# Sélecteur de dossier
 select_folder_btn = ctk.CTkButton(export_tab, text="...", width=30, command=lambda: select_folder(), hover=True)
 select_folder_btn.grid(row=5, column=2)
 ToolTip(select_folder_btn, "Parcourir dossier")
+
+# Bouton Export
 export_button = ctk.CTkButton(export_tab, text="Exporter", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_export))
 export_button.grid(row=6, column=1, pady=10)
 ToolTip(export_button, "Exporter les objets ou graphiques")
 
-# === IMPORT UI ===
-import_tab = accordion.tab("Import")
-ctk.CTkLabel(import_tab, text="Fichier XML :").grid(row=1, column=0, sticky="w")
-ctk.CTkEntry(import_tab, textvariable=import_xml_path, state="readonly").grid(row=1, column=1)
-select_xml_btn = ctk.CTkButton(import_tab, text="...", width=30, command=lambda: select_xml_file(), hover=True)
-select_xml_btn.grid(row=1, column=2)
-ToolTip(select_xml_btn, "Parcourir fichier XML")
-import_button = ctk.CTkButton(import_tab, text="Importer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_import_xml))
-import_button.grid(row=2, column=1, pady=10)
-ToolTip(import_button, "Importer un graphique XML")
-
-# === SUPPRESSION UI ===
-delete_tab = accordion.tab("Suppression")
-
-delete_type = tk.StringVar(value="Instance")
-delete_object_name = tk.StringVar()
-
-ctk.CTkLabel(delete_tab, text="Type d'objet :").grid(row=0, column=0, sticky="w")
-ctk.CTkOptionMenu(delete_tab, variable=delete_type, values=["Instance", "Template"]).grid(row=0, column=1, sticky="ew")
-
-ctk.CTkLabel(delete_tab, text="Nom de l'objet ou fichier .txt :").grid(row=1, column=0, sticky="w")
-ctk.CTkEntry(delete_tab, textvariable=delete_object_name).grid(row=1, column=1)
-select_txt_btn = ctk.CTkButton(delete_tab, text="...", width=30, command=lambda: select_txt_file_delete(), hover=True)
-select_txt_btn.grid(row=1, column=2)
-ToolTip(select_txt_btn, "Parcourir fichier .txt")
-
-delete_button = ctk.CTkButton(delete_tab, text="Supprimer", compound="left", font=("Segoe UI", 13, "bold"), width=140, height=48, command=lambda: threaded(run_delete))
-delete_button.grid(row=2, column=1, pady=10)
-ToolTip(delete_button, "Supprimer un ou plusieurs objets")
 
 # === STATUS & FOOTER ===
 def update_status(msg):
@@ -445,6 +445,8 @@ def export_single(galaxy, obj_name, export_type_str, folder):
         return False
 
 def run_export():
+    success_count = 0
+    total = 0
     update_status("Connexion à la Galaxy...")
     galaxy_name = selected_galaxy.get()
     user = username.get()
@@ -452,11 +454,13 @@ def run_export():
     input_value = object_name.get().strip()
     folder = export_folder.get()
     export_type_str = export_type.get()
+    export_mode_str = export_mode.get()  # Récupérer le mode d'export
     batch_mode = os.path.isfile(input_value) and input_value.lower().endswith(".txt")
 
     if not input_value or not folder:
         messagebox.showerror("Erreur", "Veuillez saisir un objet ou fichier .txt et un dossier d'export.")
         return
+    
     try:
         galaxy = galaxies[String(galaxy_name)]
         galaxy.Login(String(user), String(pwd))
@@ -471,17 +475,46 @@ def run_export():
             with open(input_value, "r", encoding="utf-8") as f:
                 lines = [line.strip() for line in f if line.strip()]
             
-            update_status(f"Export de {len(lines)} objets en parallèle (max 2)...")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                futures = [executor.submit(export_single, galaxy, obj_name, export_type_str, folder) for obj_name in lines]
-                total = len(futures)
-                success_count = 0
-                for future in concurrent.futures.as_completed(futures):
-                    if future.result():
-                        success_count += 1
+            if export_mode_str == "Un seul fichier" and export_type_str in ("Instance", "Template"):
+                # === Exporter tous les objets ensemble dans UN fichier ===
+                update_status(f"Export groupé de {len(lines)} objets...")
+                
+                export_path = os.path.join(folder, f"{os.path.splitext(os.path.basename(input_value))[0]}_grouped.aaPKG")
+                
+                obj_type = EgObjectIsTemplateOrInstance.gObjectIsInstance if export_type_str == "Instance" else EgObjectIsTemplateOrInstance.gObjectIsTemplate
+                obj_array = Array[String]([String(name) for name in lines])
+                
+                objects, result = galaxy.QueryObjectsByName(obj_type, obj_array)
+                if objects.count == 0:
+                    write_log("❌ Aucun objet trouvé pour export groupé.")
+                    messagebox.showerror("Erreur", "Aucun objet trouvé pour l'export groupé.")
+                    return
+                
+                # L'export se fait avec succès, alors on met à jour le compteur
+                objects.ExportObjects(EExportType.exportAsPDF, String(export_path))  # Peut-être exportAsPKG à confirmer
+                if os.path.exists(export_path):
+                    write_log(f"✅ Export groupé réussi : {export_path}")
+                    success_count = len(lines)  # Le nombre d'objets exportés est égal à la longueur de `lines`
+                    total = len(lines)  # Le total d'objets à exporter est également le même
+                else:
+                    write_log(f"❌ Échec export groupé.")
+                    messagebox.showerror("Erreur", "Échec de l'export groupé.")
+            else:
+                # === Export individuel, comme actuellement ===
+                update_status(f"Export de {len(lines)} objets en parallèle (max 2)...")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = [executor.submit(export_single, galaxy, obj_name, export_type_str, folder) for obj_name in lines]
+                    total = len(futures)
+                    success_count = 0
+                    for future in concurrent.futures.as_completed(futures):
+                        if future.result():
+                            success_count += 1
 
+            # Affichage de la popup une seule fois après l'export batch
             messagebox.showinfo("Terminé", f"Export batch terminé : {success_count}/{total} objets exportés.\nVoir le log.")
+
         else:
+            # Export pour un seul objet
             if export_single(galaxy, input_value, export_type_str, folder):
                 messagebox.showinfo("Succès", f"{export_type_str} exporté avec succès.")
             else:
@@ -489,6 +522,7 @@ def run_export():
     except Exception as e:
         write_log(f"❌ Exception globale : {e}")
         messagebox.showerror("Erreur", str(e))
+
 
 def run_import_xml():
     update_status("Connexion à la Galaxy pour import...")
